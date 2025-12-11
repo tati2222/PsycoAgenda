@@ -1,6 +1,0 @@
-fastapi
-uvicorn[standard]
-pydantic
-supabase
-python-dotenv
-pip install fastapi uvicorn pydantic supabase python-dotenv
