@@ -1,14 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Calendar, Users, CheckCircle, XCircle, DollarSign, Plus, List } from 'lucide-react';
 
 export default function App() {
-  const [apiUrl, setApiUrl] = useState('');
+  // Cargar la URL guardada de localStorage si existe, o '' si no
+  const [apiUrl, setApiUrl] = useState(() => localStorage.getItem('apiUrl') || '');
   const [isConnected, setIsConnected] = useState(false);
   const [activeTab, setActiveTab] = useState('pacientes');
-  
+
   const [pacientes, setPacientes] = useState([]);
   const [nuevoPaciente, setNuevoPaciente] = useState({ nombre: '', email: '', telefono: '' });
-  
+
   const [sesiones, setSesiones] = useState([]);
   const [nuevaSesion, setNuevaSesion] = useState({
     fecha: '',
@@ -17,9 +18,14 @@ export default function App() {
     pago: false
   });
 
+  // Guardar apiUrl en localStorage cada vez que cambia
+  useEffect(() => {
+    localStorage.setItem('apiUrl', apiUrl);
+  }, [apiUrl]);
+
   const conectarBackend = async () => {
     if (!apiUrl) {
-      alert('https://verna-unsectional-respectably.ngrok-free.dev');
+      alert('Por favor, ingresa la URL del backend');
       return;
     }
     
@@ -28,6 +34,8 @@ export default function App() {
       if (response.ok) {
         setIsConnected(true);
         cargarDatos();
+      } else {
+        alert('No se pudo conectar con el backend. Verifica la URL.');
       }
     } catch (error) {
       alert('Error al conectar con el backend. Verifica la URL.');
@@ -106,6 +114,13 @@ export default function App() {
     const paciente = pacientes.find(p => p.id === id);
     return paciente ? paciente.nombre : 'Desconocido';
   };
+
+  // Auto-conectar si ya hay una URL guardada
+  useEffect(() => {
+    if (apiUrl) {
+      conectarBackend();
+    }
+  }, []);
 
   if (!isConnected) {
     return (
