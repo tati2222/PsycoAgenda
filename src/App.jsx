@@ -24,7 +24,7 @@ export default function PsycoAgenda() {
     }
     
     try {
-      const response = await fetch(apiUrl);
+      const response = await fetch(`${apiUrl}/pacientes`);
       if (response.ok) {
         setIsConnected(true);
         cargarDatos();
