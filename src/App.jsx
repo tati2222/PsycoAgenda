@@ -19,7 +19,7 @@ export default function PsycoAgenda() {
 
   const conectarBackend = async () => {
     if (!apiUrl) {
-      alert('https://verna-unsectional-respectably.ngrok-free.dev/');
+      alert('https://verna-unsectional-respectably.ngrok-free.dev');
       return;
     }
     
