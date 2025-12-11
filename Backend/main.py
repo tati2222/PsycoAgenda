@@ -2,13 +2,15 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
-import sqlite3
 import os
 from datetime import datetime
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, ForeignKey
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, relationship
 
 app = FastAPI(title="PsycoAgenda API")
 
-# CORS seguro
+# CORS
 ALLOWED_ORIGINS = [
     "https://tati2222.github.io",
     "http://localhost:5173",
@@ -23,7 +25,48 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Modelos
+# Base de Datos PostgreSQL
+DATABASE_URL = os.environ.get("DATABASE_URL")
+
+if not DATABASE_URL:
+    raise ValueError("❌ DATABASE_URL no está configurada")
+
+# Railway usa postgres:// pero SQLAlchemy necesita postgresql://
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+# Modelos SQLAlchemy
+class PacienteDB(Base):
+    __tablename__ = "pacientes"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    nombre = Column(String, nullable=False)
+    email = Column(String, default="")
+    telefono = Column(String, default="")
+    creado = Column(DateTime, default=datetime.utcnow)
+    
+    sesiones = relationship("SesionDB", back_populates="paciente")
+
+class SesionDB(Base):
+    __tablename__ = "sesiones"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    fecha = Column(String, nullable=False)
+    paciente_id = Column(Integer, ForeignKey("pacientes.id"))
+    asistio = Column(Boolean, default=False)
+    pago = Column(Boolean, default=False)
+    creado = Column(DateTime, default=datetime.utcnow)
+    
+    paciente = relationship("PacienteDB", back_populates="sesiones")
+
+# Crear tablas
+Base.metadata.create_all(bind=engine)
+
+# Modelos Pydantic
 class Paciente(BaseModel):
     nombre: str
     email: Optional[str] = ""
@@ -35,53 +78,13 @@ class Sesion(BaseModel):
     asistio: bool = False
     pago: bool = False
 
-# Base de datos con Railway Volumes
-def init_db():
-    # Usar Railway Volume (/data) o fallback local
-    db_path = os.environ.get("DB_PATH", "psycoagenda.db")
-    
-    # Crear directorio si no existe
-    db_dir = os.path.dirname(db_path)
-    if db_dir:
-        os.makedirs(db_dir, exist_ok=True)
-    
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS pacientes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nombre TEXT NOT NULL,
-            email TEXT,
-            telefono TEXT,
-            creado TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS sesiones (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            fecha TEXT NOT NULL,
-            paciente_id INTEGER NOT NULL,
-            asistio BOOLEAN DEFAULT 0,
-            pago BOOLEAN DEFAULT 0,
-            creado TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (paciente_id) REFERENCES pacientes (id)
-        )
-    ''')
-    
-    conn.commit()
-    conn.close()
-    
-    print(f"✅ Base de datos inicializada en: {db_path}")
-    return db_path
-
-DB_PATH = init_db()
-
+# Dependencia de DB
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 # Endpoints
 @app.get("/")
@@ -89,7 +92,7 @@ def root():
     return {
         "message": "PsycoAgenda API",
         "status": "online",
-        "database": DB_PATH,
+        "database": "PostgreSQL",
         "endpoints": {
             "GET /health": "Health check",
             "GET /pacientes": "Listar pacientes",
@@ -103,10 +106,8 @@ def root():
 @app.get("/health")
 def health_check():
     try:
-        # Verificar conexión a DB
-        conn = get_db()
-        conn.execute("SELECT 1")
-        conn.close()
+        db = next(get_db())
+        db.execute("SELECT 1")
         return {
             "status": "healthy",
             "timestamp": datetime.now().isoformat(),
@@ -117,102 +118,102 @@ def health_check():
 
 @app.get("/pacientes")
 def listar_pacientes():
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM pacientes ORDER BY creado DESC")
-    pacientes = [dict(row) for row in cursor.fetchall()]
-    conn.close()
-    return pacientes
+    db = next(get_db())
+    pacientes = db.query(PacienteDB).order_by(PacienteDB.creado.desc()).all()
+    return [
+        {
+            "id": p.id,
+            "nombre": p.nombre,
+            "email": p.email,
+            "telefono": p.telefono,
+            "creado": p.creado.isoformat() if p.creado else None
+        }
+        for p in pacientes
+    ]
 
 @app.post("/pacientes")
 def crear_paciente(paciente: Paciente):
-    conn = get_db()
-    cursor = conn.cursor()
-    
+    db = next(get_db())
     try:
-        cursor.execute(
-            "INSERT INTO pacientes (nombre, email, telefono) VALUES (?, ?, ?)",
-            (paciente.nombre, paciente.email, paciente.telefono)
+        nuevo_paciente = PacienteDB(
+            nombre=paciente.nombre,
+            email=paciente.email,
+            telefono=paciente.telefono
         )
-        conn.commit()
-        paciente_id = cursor.lastrowid
+        db.add(nuevo_paciente)
+        db.commit()
+        db.refresh(nuevo_paciente)
         
-        cursor.execute("SELECT * FROM pacientes WHERE id = ?", (paciente_id,))
-        nuevo_paciente = dict(cursor.fetchone())
-        
-        return nuevo_paciente
+        return {
+            "id": nuevo_paciente.id,
+            "nombre": nuevo_paciente.nombre,
+            "email": nuevo_paciente.email,
+            "telefono": nuevo_paciente.telefono,
+            "creado": nuevo_paciente.creado.isoformat()
+        }
     except Exception as e:
-        conn.rollback()
+        db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        conn.close()
 
 @app.get("/sesiones")
 def listar_sesiones():
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT s.*, p.nombre as paciente_nombre 
-        FROM sesiones s
-        LEFT JOIN pacientes p ON s.paciente_id = p.id
-        ORDER BY s.fecha DESC
-    """)
-    sesiones = [dict(row) for row in cursor.fetchall()]
-    conn.close()
-    return sesiones
+    db = next(get_db())
+    sesiones = db.query(SesionDB).order_by(SesionDB.fecha.desc()).all()
+    return [
+        {
+            "id": s.id,
+            "fecha": s.fecha,
+            "paciente_id": s.paciente_id,
+            "paciente_nombre": s.paciente.nombre if s.paciente else None,
+            "asistio": s.asistio,
+            "pago": s.pago,
+            "creado": s.creado.isoformat() if s.creado else None
+        }
+        for s in sesiones
+    ]
 
 @app.post("/sesiones")
 def crear_sesion(sesion: Sesion):
-    conn = get_db()
-    cursor = conn.cursor()
-    
+    db = next(get_db())
     try:
-        cursor.execute("SELECT id FROM pacientes WHERE id = ?", (sesion.paciente_id,))
-        if not cursor.fetchone():
+        # Verificar que el paciente existe
+        paciente = db.query(PacienteDB).filter(PacienteDB.id == sesion.paciente_id).first()
+        if not paciente:
             raise HTTPException(status_code=404, detail="Paciente no encontrado")
         
-        cursor.execute(
-            "INSERT INTO sesiones (fecha, paciente_id, asistio, pago) VALUES (?, ?, ?, ?)",
-            (sesion.fecha, sesion.paciente_id, sesion.asistio, sesion.pago)
+        nueva_sesion = SesionDB(
+            fecha=sesion.fecha,
+            paciente_id=sesion.paciente_id,
+            asistio=sesion.asistio,
+            pago=sesion.pago
         )
-        conn.commit()
-        sesion_id = cursor.lastrowid
+        db.add(nueva_sesion)
+        db.commit()
+        db.refresh(nueva_sesion)
         
-        cursor.execute("""
-            SELECT s.*, p.nombre as paciente_nombre 
-            FROM sesiones s
-            LEFT JOIN pacientes p ON s.paciente_id = p.id
-            WHERE s.id = ?
-        """, (sesion_id,))
-        
-        nueva_sesion = dict(cursor.fetchone())
-        return nueva_sesion
+        return {
+            "id": nueva_sesion.id,
+            "fecha": nueva_sesion.fecha,
+            "paciente_id": nueva_sesion.paciente_id,
+            "paciente_nombre": paciente.nombre,
+            "asistio": nueva_sesion.asistio,
+            "pago": nueva_sesion.pago,
+            "creado": nueva_sesion.creado.isoformat()
+        }
     except HTTPException:
         raise
     except Exception as e:
-        conn.rollback()
+        db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        conn.close()
 
 @app.get("/stats")
 def estadisticas():
-    conn = get_db()
-    cursor = conn.cursor()
+    db = next(get_db())
     
-    cursor.execute("SELECT COUNT(*) as total FROM pacientes")
-    total_pacientes = cursor.fetchone()[0]
-    
-    cursor.execute("SELECT COUNT(*) as total FROM sesiones")
-    total_sesiones = cursor.fetchone()[0]
-    
-    cursor.execute("SELECT COUNT(*) as total FROM sesiones WHERE asistio = 1")
-    sesiones_asistidas = cursor.fetchone()[0]
-    
-    cursor.execute("SELECT COUNT(*) as total FROM sesiones WHERE pago = 1")
-    sesiones_pagadas = cursor.fetchone()[0]
-    
-    conn.close()
+    total_pacientes = db.query(PacienteDB).count()
+    total_sesiones = db.query(SesionDB).count()
+    sesiones_asistidas = db.query(SesionDB).filter(SesionDB.asistio == True).count()
+    sesiones_pagadas = db.query(SesionDB).filter(SesionDB.pago == True).count()
     
     return {
         "pacientes": total_pacientes,
@@ -221,30 +222,7 @@ def estadisticas():
         "pagos": f"{(sesiones_pagadas/total_sesiones*100 if total_sesiones > 0 else 0):.1f}%"
     }
 
-# Solo para desarrollo local
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
-```
-
----
-
-## 📋 Checklist de Configuración en Railway
-
-### 1. **Variables de Entorno**
-```
-DB_PATH=/data/psycoagenda.db
-```
-
-### 2. **Volume (Almacenamiento Persistente)**
-```
-Settings → Volumes → Create Volume
-Mount Path: /data
-Size: 1GB (suficiente para SQLite)
-```
-
-### 3. **Root Directory**
-```
-Settings → Service Settings → Root Directory
-Value: Backend
