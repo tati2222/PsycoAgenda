@@ -30,7 +30,9 @@ export default function App() {
     }
     
     try {
-      const response = await fetch(`${apiUrl}/pacientes`);
+      const cleanApiUrl = apiUrl.endsWith('/') ? apiUrl.slice(0, -1) : apiUrl;
+      const response = await fetch(`${cleanApiUrl}/pacientes`);
+
       if (response.ok) {
         setIsConnected(true);
         cargarDatos();
