@@ -3,7 +3,7 @@ import { Calendar, Users, CheckCircle, XCircle, DollarSign, Plus, List } from 'l
 
 export default function App() {
   // Cargar la URL guardada de localStorage si existe, o '' si no
-  const [apiUrl, setApiUrl] = useState(() => localStorage.getItem('https://verna-unsectional-respectably.ngrok-free.dev') || '');
+  const [apiUrl, setApiUrl] = useState(() => localStorage.getItem('apiUrl') || '');
   const [isConnected, setIsConnected] = useState(false);
   const [activeTab, setActiveTab] = useState('pacientes');
 
