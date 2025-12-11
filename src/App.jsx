@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Calendar, Users, CheckCircle, XCircle, DollarSign, Plus, List } from 'lucide-react';
 
-export default function PsycoAgenda() {
+export default function App() {
   const [apiUrl, setApiUrl] = useState('');
   const [isConnected, setIsConnected] = useState(false);
   const [activeTab, setActiveTab] = useState('pacientes');
@@ -126,7 +126,7 @@ export default function PsycoAgenda() {
                 type="text"
                 value={apiUrl}
                 onChange={(e) => setApiUrl(e.target.value)}
-                placeholder="https://verna-unsectional-respectably.ngrok-free.dev/"
+                placeholder="https://verna-unsectional-respectably.ngrok-free.dev"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
               />
               <p className="mt-2 text-xs text-gray-500">
