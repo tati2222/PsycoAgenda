@@ -1,72 +1,57 @@
-import os
-from dotenv import load_dotenv
-from supabase import create_client
 from fastapi import FastAPI
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import date
 
-load_dotenv()
-
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-
 app = FastAPI()
 
-# Modelo para paciente
 class Paciente(BaseModel):
     id: int
     nombre: str
     email: Optional[str] = None
 
-# Modelo para sesión
 class Sesion(BaseModel):
     id: int
     paciente_id: int
     fecha: date
     asistio: bool = False
     pago_realizado: bool = False
+    historia_clinica: Optional[str] = None
+
+pacientes_db: List[Paciente] = []
+sesiones_db: List[Sesion] = []
 
 @app.get("/")
-def read_root():
-    return {"message": "Hola desde PsycoAgenda!"}
+def root():
+    return {"message": "Backend PsycoAgenda funcionando"}
 
-# Crear paciente
 @app.post("/pacientes/")
 def crear_paciente(paciente: Paciente):
-    data = paciente.dict()
-    response = supabase.table("pacientes").insert(data).execute()
-    if response.status_code == 201:
-        return {"mensaje": "Paciente creado", "paciente": data}
-    else:
-        return {"error": "No se pudo crear el paciente", "detalle": response.data}
+    pacientes_db.append(paciente)
+    return {"mensaje": "Paciente creado", "paciente": paciente}
 
-# Listar pacientes
 @app.get("/pacientes/", response_model=List[Paciente])
 def listar_pacientes():
-    response = supabase.table("pacientes").select("*").execute()
-    if response.status_code == 200:
-        return response.data
-    else:
-        return {"error": "No se pudo obtener la lista de pacientes", "detalle": response.data}
+    return pacientes_db
 
-# Crear sesión
 @app.post("/sesiones/")
 def crear_sesion(sesion: Sesion):
-    data = sesion.dict()
-    response = supabase.table("sesiones").insert(data).execute()
-    if response.status_code == 201:
-        return {"mensaje": "Sesión creada", "sesion": data}
-    else:
-        return {"error": "No se pudo crear la sesión", "detalle": response.data}
+    sesiones_db.append(sesion)
+    return {"mensaje": "Sesión creada", "sesion": sesion}
 
-# Listar sesiones
 @app.get("/sesiones/", response_model=List[Sesion])
 def listar_sesiones():
-    response = supabase.table("sesiones").select("*").execute()
-    if response.status_code == 200:
-        return response.data
-    else:
-        return {"error": "No se pudo obtener la lista de sesiones", "detalle": response.data}
+    return sesiones_db
+
+@app.put("/sesiones/{sesion_id}")
+def actualizar_sesion(sesion_id: int, asistio: Optional[bool] = None, pago_realizado: Optional[bool] = None, historia_clinica: Optional[str] = None):
+    for sesion in sesiones_db:
+        if sesion.id == sesion_id:
+            if asistio is not None:
+                sesion.asistio = asistio
+            if pago_realizado is not None:
+                sesion.pago_realizado = pago_realizado
+            if historia_clinica is not None:
+                sesion.historia_clinica = historia_clinica
+            return {"mensaje": "Sesión actualizada", "sesion": sesion}
+    return {"error": "Sesión no encontrada"}
