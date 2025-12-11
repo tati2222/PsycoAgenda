@@ -1,23 +1,23 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional
 import sqlite3
 import os
 from datetime import datetime
 
-app = FastAPI(title="PsycoAgenda API - Railway")
+app = FastAPI(title="PsycoAgenda API")
 
-# Configurar CORS para Railway
+# CORS seguro
+ALLOWED_ORIGINS = [
+    "https://tati2222.github.io",
+    "http://localhost:5173",
+    "http://localhost:3000"
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://tati2222.github.io",  # Tu GitHub Pages
-        "http://localhost:3000",       # Desarrollo local
-        "http://localhost:5173",       # Vite
-        "https://*.vercel.app",        # Si usas Vercel
-        "*"  # Temporal para pruebas
-    ],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -35,10 +35,16 @@ class Sesion(BaseModel):
     asistio: bool = False
     pago: bool = False
 
-# Base de datos SQLite persistente
+# Base de datos con Railway Volumes
 def init_db():
-    # En Railway, /tmp es persistente entre reinicios
-    db_path = os.path.join("/tmp", "psycoagenda.db") if os.path.exists("/tmp") else "psycoagenda.db"
+    # Usar Railway Volume (/data) o fallback local
+    db_path = os.environ.get("DB_PATH", "psycoagenda.db")
+    
+    # Crear directorio si no existe
+    db_dir = os.path.dirname(db_path)
+    if db_dir:
+        os.makedirs(db_dir, exist_ok=True)
+    
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     
@@ -66,35 +72,48 @@ def init_db():
     
     conn.commit()
     conn.close()
+    
+    print(f"✅ Base de datos inicializada en: {db_path}")
     return db_path
 
 DB_PATH = init_db()
 
 def get_db():
     conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row  # Para acceder a columnas por nombre
+    conn.row_factory = sqlite3.Row
     return conn
 
 # Endpoints
 @app.get("/")
 def root():
     return {
-        "message": "PsycoAgenda API - Railway Deployment",
+        "message": "PsycoAgenda API",
         "status": "online",
+        "database": DB_PATH,
         "endpoints": {
+            "GET /health": "Health check",
             "GET /pacientes": "Listar pacientes",
             "POST /pacientes": "Crear paciente",
-            "GET /sesiones": "Listar sesiones", 
+            "GET /sesiones": "Listar sesiones",
             "POST /sesiones": "Crear sesión",
-            "GET /stats": "Estadísticas",
-            "GET /health": "Health check"
-        },
-        "database": "SQLite"
+            "GET /stats": "Estadísticas"
+        }
     }
 
 @app.get("/health")
 def health_check():
-    return {"status": "healthy", "timestamp": str(datetime.now())}
+    try:
+        # Verificar conexión a DB
+        conn = get_db()
+        conn.execute("SELECT 1")
+        conn.close()
+        return {
+            "status": "healthy",
+            "timestamp": datetime.now().isoformat(),
+            "database": "connected"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Database error: {str(e)}")
 
 @app.get("/pacientes")
 def listar_pacientes():
@@ -148,7 +167,6 @@ def crear_sesion(sesion: Sesion):
     cursor = conn.cursor()
     
     try:
-        # Verificar que el paciente existe
         cursor.execute("SELECT id FROM pacientes WHERE id = ?", (sesion.paciente_id,))
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Paciente no encontrado")
@@ -203,7 +221,30 @@ def estadisticas():
         "pagos": f"{(sesiones_pagadas/total_sesiones*100 if total_sesiones > 0 else 0):.1f}%"
     }
 
+# Solo para desarrollo local
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+```
+
+---
+
+## 📋 Checklist de Configuración en Railway
+
+### 1. **Variables de Entorno**
+```
+DB_PATH=/data/psycoagenda.db
+```
+
+### 2. **Volume (Almacenamiento Persistente)**
+```
+Settings → Volumes → Create Volume
+Mount Path: /data
+Size: 1GB (suficiente para SQLite)
+```
+
+### 3. **Root Directory**
+```
+Settings → Service Settings → Root Directory
+Value: Backend
