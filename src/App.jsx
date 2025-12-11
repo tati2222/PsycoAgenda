@@ -19,7 +19,7 @@ export default function PsycoAgenda() {
 
   const conectarBackend = async () => {
     if (!apiUrl) {
-      alert('Por favor ingresa la URL del backend');
+      alert('https://verna-unsectional-respectably.ngrok-free.dev/');
       return;
     }
     
@@ -126,7 +126,7 @@ export default function PsycoAgenda() {
                 type="text"
                 value={apiUrl}
                 onChange={(e) => setApiUrl(e.target.value)}
-                placeholder="https://tu-backend-url.loca.lt"
+                placeholder="https://verna-unsectional-respectably.ngrok-free.dev/"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
               />
               <p className="mt-2 text-xs text-gray-500">
