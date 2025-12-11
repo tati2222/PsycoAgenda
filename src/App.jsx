@@ -23,6 +23,9 @@ export default function App() {
     localStorage.setItem('apiUrl', apiUrl);
   }, [apiUrl]);
 
+  // Función para limpiar slash final de la URL
+  const cleanUrl = (url) => url.endsWith('/') ? url.slice(0, -1) : url;
+
   const conectarBackend = async () => {
     if (!apiUrl) {
       alert('Por favor, ingresa la URL del backend');
@@ -30,7 +33,7 @@ export default function App() {
     }
     
     try {
-      const cleanApiUrl = apiUrl.endsWith('/') ? apiUrl.slice(0, -1) : apiUrl;
+      const cleanApiUrl = cleanUrl(apiUrl);
       const response = await fetch(`${cleanApiUrl}/pacientes`);
 
       if (response.ok) {
@@ -51,7 +54,7 @@ export default function App() {
 
   const cargarPacientes = async () => {
     try {
-      const response = await fetch(`${apiUrl}/pacientes`);
+      const response = await fetch(`${cleanUrl(apiUrl)}/pacientes`);
       const data = await response.json();
       setPacientes(data);
     } catch (error) {
@@ -65,7 +68,7 @@ export default function App() {
       return;
     }
     try {
-      const response = await fetch(`${apiUrl}/pacientes`, {
+      const response = await fetch(`${cleanUrl(apiUrl)}/pacientes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(nuevoPaciente)
@@ -81,7 +84,7 @@ export default function App() {
 
   const cargarSesiones = async () => {
     try {
-      const response = await fetch(`${apiUrl}/sesiones`);
+      const response = await fetch(`${cleanUrl(apiUrl)}/sesiones`);
       const data = await response.json();
       setSesiones(data);
     } catch (error) {
@@ -95,7 +98,7 @@ export default function App() {
       return;
     }
     try {
-      const response = await fetch(`${apiUrl}/sesiones`, {
+      const response = await fetch(`${cleanUrl(apiUrl)}/sesiones`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
